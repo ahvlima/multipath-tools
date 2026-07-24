@@ -1,19 +1,19 @@
-#include "debug.h"
+#include <stdlib.h>
+#include <stdbool.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <regex.h>
+#include <unistd.h>
+#include <errno.h>
+#include <arpa/inet.h>
 #include "prio.h"
+#include "debug.h"
+#include "mt-udev-wrap.h"
 #include "structs.h"
 #include "util.h"
-#include <arpa/inet.h>
-#include <errno.h>
-#include <libudev.h>
-#include <limits.h>
-#include <regex.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 //
 // This prioritizer allows path selection based on target's IP address.
@@ -33,7 +33,6 @@
 //   	0.0.0.0/0 to set the "no match" priority (defaults to 0)
 //
 //
-// Uses /dev/disk/by-path to find the IP of the device.
 // Matching follows network routing semantics (more specific match wins)
 //
 // by Olivier Lambert <lambert.olivier.gmail.com>
@@ -146,10 +145,9 @@ static int parse_cidr(const char *s, uint32_t *network, uint32_t *mask)
 
 		prefix = (int)val;
 
-	} else {
+	} else
 		/* no CIDR suffix -> exact host match */
 		prefix = 32;
-	}
 
 	count = sscanf(ipstr, "%u.%u.%u.%u%c", &o[0], &o[1], &o[2], &o[3], &extra);
 	if (count < 1 || count > 4 || o[0] > 255 || o[1] > 255 || o[2] > 255 ||
@@ -206,14 +204,13 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 		int priority;
 		struct ipprio_entry *e;
 
-		/* A single IP without CIDR mask and priority attain backward compatibility
-     */
+		/* A single IP without CIDR mask and priority attain backward compatibility */
 		colon = strrchr(entry, ':');
 
 		if (!colon) {
 			if (not_first || strchr(entry, '/') != NULL ||
 			    strtok_r(NULL, ",", &saveptr) != NULL)
-                goto error_cleanup;
+				goto error_cleanup;
 
 			cidr = entry;
 			priority = DEFAULT_HIGH_PRIORITY;
@@ -224,7 +221,7 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 			prio_str = colon + 1;
 
 			if (*cidr == '\0' || *prio_str == '\0')
-                goto error_cleanup;
+				goto error_cleanup;
 
 			errno = 0;
 			val = strtol(prio_str, &endptr, 10);
@@ -236,12 +233,12 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 			priority = (int)val;
 		}
 
-		if (parse_cidr(cidr, &network, &mask) != 0) 
-            goto error_cleanup;
+		if (parse_cidr(cidr, &network, &mask) != 0)
+			goto error_cleanup;
 
 		e = calloc(1, sizeof(*e));
-		if (!e) 
-            goto error_cleanup;
+		if (!e)
+			goto error_cleanup;
 
 		e->network = network;
 		e->mask = mask;
@@ -258,10 +255,10 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 	free(buf);
 	return ipprio_list;
 
-    error_cleanup:
-        free(buf);
-		free_ipprio_list(ipprio_list);
-		return NULL;
+error_cleanup:
+	free(buf);
+	free_ipprio_list(ipprio_list);
+	return NULL;
 }
 
 //
@@ -326,11 +323,9 @@ static int find_priority(const char *sysname, const char *ipstr,
 			if (prefix == 32)
 				break;
 
-		} else {
-
+		} else
 			dc_log(4, "find_priority: no match ip=%s network=%s mask=%s",
 			       ipstr, net_buf, mask_buf);
-		}
 	}
 
 	dc_log(4, "find_priority: final priority for %s is %d", ipstr, best_prio);
@@ -400,11 +395,10 @@ int iet_prio(struct udev_device *udev, char *args)
 	ip = find_regex(by_path,
 			"([0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3})");
 
-	if (ip) {
+	if (ip)
 		prio = find_priority(sysname, ip, ipprio_list);
-	} else {
+	else
 		prio = DEFAULT_PRIORITY;
-	}
 
 	free(ip);
 	free_ipprio_list(ipprio_list);
