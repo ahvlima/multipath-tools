@@ -30,7 +30,7 @@
 //   prio_args "preferredip=<IP|CIDR>:Prio,<IP|CIDR>:Prio,..."
 //		IP can be specified directly or in CIDR notation (IP/32)
 //   	CIDR can use standard n.n.n.n/p format or any valid shorthand
-//   	0.0.0.0/0 to set the "no match" priority (defaults to 10)
+//   	0.0.0.0/0 to set the "no match" priority (defaults to 0)
 //
 //
 // Uses /dev/disk/by-path to find the IP of the device.
@@ -46,7 +46,7 @@
 #define dc_log(prio, fmt, ...) condlog(prio, "%s " fmt, sysname, ##__VA_ARGS__)
 #endif
 
-#define DEFAULT_PRIORITY 10
+#define DEFAULT_PRIORITY 0
 #define DEFAULT_HIGH_PRIORITY 20
 
 //
@@ -125,8 +125,6 @@ static int parse_cidr(const char *s, uint32_t *network, uint32_t *mask)
 	char *endptr;
 	long val;
 	int prefix;
-	// struct in_addr addr;
-	// char expanded[32];
 	unsigned int o[4] = { 0 };
 	char extra;
 	int count;
@@ -214,51 +212,36 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 
 		if (!colon) {
 			if (not_first || strchr(entry, '/') != NULL ||
-			    strtok_r(NULL, ",", &saveptr) != NULL) {
-				free(buf);
-				free_ipprio_list(ipprio_list);
-				return NULL;
-			}
+			    strtok_r(NULL, ",", &saveptr) != NULL)
+                goto error_cleanup;
 
 			cidr = entry;
-			priority = 20;
+			priority = DEFAULT_HIGH_PRIORITY;
 			entry = NULL; /* consume the only entry */
 		} else {
 			*colon = '\0';
 			cidr = entry;
 			prio_str = colon + 1;
 
-			if (*cidr == '\0' || *prio_str == '\0') {
-				free(buf);
-				free_ipprio_list(ipprio_list);
-				return NULL;
-			}
+			if (*cidr == '\0' || *prio_str == '\0')
+                goto error_cleanup;
 
 			errno = 0;
 			val = strtol(prio_str, &endptr, 10);
 
 			if (errno != 0 || endptr == prio_str ||
-			    *endptr != '\0' || val <= 0 || val > INT_MAX) {
-				free(buf);
-				free_ipprio_list(ipprio_list);
-				return NULL;
-			}
+			    *endptr != '\0' || val == 0 || val > INT_MAX)
+				goto error_cleanup;
 
 			priority = (int)val;
 		}
 
-		if (parse_cidr(cidr, &network, &mask) != 0) {
-			free(buf);
-			free_ipprio_list(ipprio_list);
-			return NULL;
-		}
+		if (parse_cidr(cidr, &network, &mask) != 0) 
+            goto error_cleanup;
 
 		e = calloc(1, sizeof(*e));
-		if (!e) {
-			free(buf);
-			free_ipprio_list(ipprio_list);
-			return NULL;
-		}
+		if (!e) 
+            goto error_cleanup;
 
 		e->network = network;
 		e->mask = mask;
@@ -274,6 +257,11 @@ static struct ipprio_entry *parse_ippriorities(const char *args)
 
 	free(buf);
 	return ipprio_list;
+
+    error_cleanup:
+        free(buf);
+		free_ipprio_list(ipprio_list);
+		return NULL;
 }
 
 //
@@ -387,7 +375,7 @@ int iet_prio(struct udev_device *udev, char *args)
 		ipprio_list = parse_ippriorities(args);
 		if (!ipprio_list) {
 			if (!arg_logged) {
-				dc_log(2, "invalid prio_args ippriorities");
+				dc_log(2, "invalid prio_args preferredip");
 				arg_logged = true;
 			}
 			return 0;
